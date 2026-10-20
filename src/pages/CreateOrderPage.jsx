@@ -23,6 +23,23 @@ import { orderService } from "../services/orderService";
 import { imageUrl } from "../utils/assetUrl";
 import { sellableUnits, toOrderItem } from "../utils/variants";
 
+const ORDER_SOURCE_OPTIONS = [
+  "Website",
+  "Facebook",
+  "FB Messenger",
+  "Tiktok Messenger",
+  "Tiktok",
+  "Whatsapp",
+  "Direct Call",
+  "Google",
+  "WooCommerce",
+  "Landing Page",
+  "POS",
+  "Manual",
+  "Failed Order",
+  "Other",
+];
+
 // ── Delivery areas ─────────────────────────────────────────
 const deliveryAreas = [
   { label: "ঢাকার ভিতরে ৮০ টাকা", fee: 80 },
@@ -85,6 +102,8 @@ export default function CreateOrderPage({ onNavigate }) {
   const [areaIdx, setAreaIdx] = useState(0);
   const [discount, setDiscount] = useState("");
   const [advanced, setAdvanced] = useState("");
+  const [orderTag, setOrderTag] = useState("");
+  const [orderSource, setOrderSource] = useState("Manual");
   // Product search / filter
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
@@ -160,7 +179,8 @@ export default function CreateOrderPage({ onNavigate }) {
         deliveryCharge: shippingFee,
         discount: discountAmt,
         advance: paidAmt || 0,
-        orderSource: "Manual",
+        orderSource,
+        orderTag: orderTag.trim(),
         orderDate: new Date().toISOString().slice(0, 10),
       };
 
@@ -168,6 +188,8 @@ export default function CreateOrderPage({ onNavigate }) {
       checkout.complete();
       alert("Order সফলভাবে তৈরি হয়েছে!");
       clearCart();
+      setOrderTag("");
+      setOrderSource("Manual");
       onNavigate && onNavigate("orders");
     } catch (err) {
       alert(err.message || "Order তৈরি করতে সমস্যা হয়েছে");
@@ -278,7 +300,7 @@ export default function CreateOrderPage({ onNavigate }) {
       {/* ── Page Body ── */}
       <div className="flex flex-1 flex-col overflow-hidden xl:flex-row">
         {/* ════ LEFT PANEL ════ */}
-        <div className="flex max-h-[48vh] w-full flex-shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white xl:max-h-none xl:w-[520px] xl:border-b-0 xl:border-r">
+        <div className="flex max-h-[48vh] w-full flex-shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white xl:max-h-none xl:w-[640px] xl:border-b-0 xl:border-r">
           {/* Title */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h1 className="text-base font-bold text-gray-800">Create Order</h1>
@@ -385,6 +407,35 @@ export default function CreateOrderPage({ onNavigate }) {
                 />
               </>
             )}
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span>Order Tag</span>
+                <select
+                  value={orderTag}
+                  onChange={(e) => setOrderTag(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300"
+                >
+                  <option value="">Select Order Tag</option>
+                  <option value="up sale">Up Sale</option>
+                  <option value="cross sale">Cross Sale</option>
+                  <option value="regular sale">Regular Sale</option>
+                  <option value="push sale">Push Sale</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span>Order Source</span>
+                <select
+                  value={orderSource}
+                  onChange={(e) => setOrderSource(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300"
+                >
+                  {ORDER_SOURCE_OPTIONS.map((source) => (
+                    <option key={source} value={source}>{source}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             {/* Delivery area */}
             <div className="relative">
@@ -596,7 +647,7 @@ export default function CreateOrderPage({ onNavigate }) {
                   পণ্য লোড হচ্ছে...
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {filteredProducts.map((product, i) => (
                     <ProductCard
                       key={product.id}
@@ -629,6 +680,9 @@ export default function CreateOrderPage({ onNavigate }) {
 
 /* ── Cart Row ── */
 function CartRow({ item, onRemove, onQty, onDisc }) {
+  const imageSrc = productImageSrc(item.images?.[0] || item.image);
+  const [failedImage, setFailedImage] = useState(null);
+
   return (
     <tr className="border-b border-gray-100">
       <td className="px-3 py-2 relative">
@@ -638,8 +692,17 @@ function CartRow({ item, onRemove, onQty, onDisc }) {
         >
           <X size={9} />
         </button>
-        <div className="w-10 h-10 rounded bg-gradient-to-br from-amber-100 to-yellow-200 border border-amber-200 flex items-center justify-center text-[9px] text-amber-600 font-medium">
-          IMG
+        <div className="w-10 h-10 overflow-hidden rounded bg-white border border-gray-200 flex items-center justify-center text-[9px] text-gray-400">
+          {imageSrc && failedImage !== imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={item.name}
+              className="h-full w-full object-contain"
+              onError={() => setFailedImage(imageSrc)}
+            />
+          ) : (
+            <span>No image</span>
+          )}
         </div>
       </td>
       <td className="px-3 py-2">
@@ -693,7 +756,7 @@ function ProductCard({ product, gradient, inCart, onAdd }) {
   return (
     <div
       onClick={onAdd}
-      className={`bg-white rounded-xl border cursor-pointer transition-all duration-150 overflow-hidden group ${
+      className={`flex aspect-square min-w-0 flex-col bg-white rounded-xl border cursor-pointer transition-all duration-150 overflow-hidden group ${
         inCart
           ? "border-teal-400 shadow-md shadow-teal-100"
           : "border-gray-200 hover:border-teal-300 hover:shadow-md"
@@ -701,13 +764,13 @@ function ProductCard({ product, gradient, inCart, onAdd }) {
     >
       {/* Image area */}
       <div
-        className={`relative bg-gradient-to-br ${gradient} h-28 flex items-center justify-center`}
+        className={`relative bg-gradient-to-br ${gradient} min-h-0 flex-1 flex items-center justify-center`}
       >
         {product.images?.[0] ? (
           <img
             src={productImageSrc(product.images[0])}
             alt={product.name}
-            className="h-24 w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain p-2"
           />
         ) : (
           <div className="w-16 h-20 bg-white/40 rounded-lg flex items-center justify-center">
@@ -735,7 +798,7 @@ function ProductCard({ product, gradient, inCart, onAdd }) {
       </div>
 
       {/* Info */}
-      <div className="p-2">
+      <div className="shrink-0 p-2">
         <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide truncate">
           {product.brand}
         </div>

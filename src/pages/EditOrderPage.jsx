@@ -118,6 +118,23 @@ function buildTracking(order, statuses) {
   }));
 }
 
+const ORDER_SOURCE_OPTIONS = [
+  "Website",
+  "Facebook",
+  "FB Messenger",
+  "Tiktok Messenger",
+  "Tiktok",
+  "Whatsapp",
+  "Direct Call",
+  "Google",
+  "WooCommerce",
+  "Landing Page",
+  "POS",
+  "Manual",
+  "Failed Order",
+  "Other",
+];
+
 export default function EditOrderPage({
   order,
   onNavigate,
@@ -155,6 +172,15 @@ export default function EditOrderPage({
     initialOrder.discount ? String(initialOrder.discount) : "",
   );
   const [advanced, setAdvanced] = useState(String(order.advance || 0));
+  const [orderMeta] = useState(() => {
+    try {
+      return typeof order.note === "string" ? JSON.parse(order.note) || {} : order.note || {};
+    } catch {
+      return {};
+    }
+  });
+  const [orderTag, setOrderTag] = useState(order.orderTag ?? orderMeta.orderTag ?? "");
+  const [orderSource, setOrderSource] = useState(order.orderSource || orderMeta.orderSource || orderMeta.source || "Manual");
   const [orderStatus, setOrderStatus] = useState(order.status || "pending");
   const [isGuest, setIsGuest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -293,6 +319,8 @@ export default function EditOrderPage({
         discount: discountAmt,
         advance: paidAmt || 0,
         status: orderStatus,
+        orderTag,
+        orderSource,
       };
       await orderService.updateOrder(order.Id, payload);
       await onCountsRefresh?.();
@@ -358,7 +386,7 @@ export default function EditOrderPage({
       {/* Body */}
       <div className="flex flex-1 flex-col overflow-hidden xl:flex-row">
         {/* ════ LEFT PANEL ════ */}
-        <div className="flex max-h-[48vh] w-full flex-shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white pl-3 xl:max-h-none xl:w-[520px] xl:border-b-0 xl:border-r">
+        <div className="flex max-h-[48vh] w-full flex-shrink-0 flex-col overflow-y-auto border-b border-gray-200 bg-white xl:max-h-none xl:w-[640px] xl:border-b-0 xl:border-r">
           {/* Title */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <h1 className="text-base font-bold text-gray-800">Order Edit</h1>
@@ -455,6 +483,41 @@ export default function EditOrderPage({
               placeholder="Delivery Address"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300"
             />
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span>Order Tag</span>
+                <select
+                  value={orderTag}
+                  onChange={(e) => setOrderTag(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300"
+                >
+                  <option value="">Select Order Tag</option>
+                  {orderTag && !["up sale", "cross sale", "regular sale", "push sale"].includes(orderTag) && (
+                    <option value={orderTag}>{orderTag}</option>
+                  )}
+                  <option value="up sale">Up Sale</option>
+                  <option value="cross sale">Cross Sale</option>
+                  <option value="regular sale">Regular Sale</option>
+                  <option value="push sale">Push Sale</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span>Order Source</span>
+                <select
+                  value={orderSource}
+                  onChange={(e) => setOrderSource(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300"
+                >
+                  {!ORDER_SOURCE_OPTIONS.includes(orderSource) && (
+                    <option value={orderSource}>{orderSource}</option>
+                  )}
+                  {ORDER_SOURCE_OPTIONS.map((source) => (
+                    <option key={source} value={source}>{source}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             {/* Area */}
             <div className="relative">
@@ -756,7 +819,7 @@ export default function EditOrderPage({
                   পণ্য লোড হচ্ছে...
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {filteredProducts.map((product, i) => (
                     <ProductCard
                       key={product.id}
@@ -789,19 +852,29 @@ export default function EditOrderPage({
 
 /* ── Cart Row ── */
 function CartRow({ item, onRemove, onQty, onDisc }) {
+  const imageSrc = productImageSrc(item.images?.[0] || item.image);
+  const [failedImage, setFailedImage] = useState(null);
+
   return (
     <tr className="border-b border-gray-100">
-      <td className="px-3 py-2">
-        <div className="relative w-10 h-10">
-          <button
-            onClick={onRemove}
-            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center z-10 transition shadow border-2 border-white"
-          >
-            <X size={10} strokeWidth={3} />
-          </button>
-          <div className="w-10 h-10 rounded bg-gradient-to-br from-amber-100 to-yellow-200 border border-amber-200 flex items-center justify-center text-lg">
-            🧴
-          </div>
+      <td className="px-3 py-2 relative">
+        <button
+          onClick={onRemove}
+          className="absolute -top-1 -left-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center z-10 transition"
+        >
+          <X size={9} />
+        </button>
+        <div className="w-10 h-10 overflow-hidden rounded bg-white border border-gray-200 flex items-center justify-center text-[9px] text-gray-400">
+          {imageSrc && failedImage !== imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={item.name}
+              className="h-full w-full object-contain"
+              onError={() => setFailedImage(imageSrc)}
+            />
+          ) : (
+            <span>No image</span>
+          )}
         </div>
       </td>
       <td className="px-3 py-2">
@@ -812,7 +885,7 @@ function CartRow({ item, onRemove, onQty, onDisc }) {
           ৳ {item.price} × {item.qty}
         </div>
         <span className="bg-teal-100 text-teal-700 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-block">
-          12ml
+          {item.sku}
         </span>
       </td>
       <td className="px-3 py-2">
@@ -839,12 +912,12 @@ function CartRow({ item, onRemove, onQty, onDisc }) {
           type="number"
           value={item.disc}
           onChange={(e) => onDisc(e.target.value)}
-          min={0}
           className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-teal-300"
+          min={0}
         />
       </td>
       <td className="px-3 py-2 text-right font-bold text-gray-800 text-xs whitespace-nowrap">
-        ৳{item.price * item.qty - item.disc}
+        ৳ {item.price * item.qty - item.disc}
       </td>
     </tr>
   );
@@ -855,26 +928,28 @@ function ProductCard({ product, gradient, inCart, onAdd }) {
   return (
     <div
       onClick={onAdd}
-      className={`bg-white rounded-xl border cursor-pointer transition-all duration-150 overflow-hidden group ${
+      className={`flex aspect-square min-w-0 flex-col bg-white rounded-xl border cursor-pointer transition-all duration-150 overflow-hidden group ${
         inCart
           ? "border-teal-400 shadow-md shadow-teal-100"
           : "border-gray-200 hover:border-teal-300 hover:shadow-md"
       }`}
     >
+      {/* Image area */}
       <div
-        className={`relative bg-gradient-to-br ${gradient} h-28 flex items-center justify-center`}
+        className={`relative bg-gradient-to-br ${gradient} min-h-0 flex-1 flex items-center justify-center`}
       >
         {product.images?.[0] ? (
           <img
             src={productImageSrc(product.images[0])}
             alt={product.name}
-            className="h-24 w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain p-2"
           />
         ) : (
           <div className="w-16 h-20 bg-white/40 rounded-lg flex items-center justify-center">
             <div className="text-2xl">🧴</div>
           </div>
         )}
+        {/* Cart badge */}
         <div
           className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition ${
             inCart ? "bg-teal-500" : "bg-white/80 group-hover:bg-teal-100"
@@ -893,7 +968,9 @@ function ProductCard({ product, gradient, inCart, onAdd }) {
           </div>
         )}
       </div>
-      <div className="p-2">
+
+      {/* Info */}
+      <div className="shrink-0 p-2">
         <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide truncate">
           {product.brand}
         </div>

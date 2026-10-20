@@ -160,6 +160,7 @@ export default function VariantBuilder({ attributes = [], colors = [], images = 
               <th className="px-4 py-3 text-left text-gray-600 font-semibold">New Price *</th>
               <th className="px-4 py-3 text-left text-gray-600 font-semibold">Stock</th>
               <th className="px-4 py-3 text-center text-gray-600 font-semibold">Available</th>
+              <th className="px-4 py-3 text-center text-gray-600 font-semibold" title="Stock না থাকলেও order নেওয়া যাবে">Pre Order</th>
             </tr>
           </thead>
           <tbody>
@@ -197,6 +198,14 @@ export default function VariantBuilder({ attributes = [], colors = [], images = 
                     className="h-4 w-4 accent-blue-600"
                     checked={row.availability !== 'out of stock'}
                     onChange={e => updateRow(row.key, 'availability', e.target.checked ? 'in stock' : 'out of stock')}
+                  />
+                </td>
+                <td className="px-4 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-orange-500"
+                    checked={Boolean(row.preOrder)}
+                    onChange={e => updateRow(row.key, 'preOrder', e.target.checked)}
                   />
                 </td>
               </tr>

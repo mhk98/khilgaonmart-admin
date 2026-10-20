@@ -4,6 +4,7 @@ import { toOrderStatusKey } from '../../utils/orderStatuses';
 import { formatInvoiceNumber } from '../../utils/invoiceNumber';
 
 const STATUS_LABELS = {
+  pre_order: 'Pre Order',
   pending: 'Pending',
   packaging: 'Packaging',
   confirmed: 'Confirmed',

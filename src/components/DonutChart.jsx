@@ -7,7 +7,7 @@ export default function DonutChart({ ordersByStatus = [], summary = {}, loading 
   const returned    = ordersByStatus.find((o) => o.status === 'returned')    || {};
   const allRow      = ordersByStatus.find((o) => o.status === 'all')         || {};
 
-  const processingStatuses = ['pending','packaging','confirmed','in_courier','on_hold','incomplete'];
+  const processingStatuses = ['pre_order','pending','packaging','confirmed','in_courier','on_hold','incomplete'];
   const processingPct = processingStatuses.reduce(
     (s, k) => s + (ordersByStatus.find((o) => o.status === k)?.percent || 0), 0
   );

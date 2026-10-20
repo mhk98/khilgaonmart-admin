@@ -1,6 +1,6 @@
 // Helpers for the product variant builder (one row per option combination).
 
-const emptyRow = { purchasePrice: '', oldPrice: '', discountPercent: '', newPrice: '', stock: '', sku: '', image: '', availability: 'in stock' };
+const emptyRow = { purchasePrice: '', oldPrice: '', discountPercent: '', newPrice: '', stock: '', sku: '', image: '', availability: 'in stock', preOrder: false };
 
 export function parseJson(value, fallback) {
   if (value && typeof value === 'object') return value;
@@ -74,6 +74,7 @@ export function variantsFromProduct(variations = []) {
         discountPercent: calcDiscountPercent(v.oldPrice, v.newPrice),
         stock: v.stock ?? '',
         availability: v.availability || 'in stock',
+        preOrder: Boolean(v.preOrder),
       };
     });
   return rows.length ? rows : [{ ...emptyRow, key: '', options: null }];

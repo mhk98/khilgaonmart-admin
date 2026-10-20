@@ -10,7 +10,7 @@ import {
   Ban, SlidersHorizontal, Share2, Phone, Truck as TruckIcon, CircleDot, FilePlus,
   Bike, Banknote, MessageSquare, ShieldAlert,
   Cpu, Ticket, LayoutGrid, Activity, FileText, Folder, TrendingUp,
-  PanelBottom, PanelTop,
+  PanelBottom, PanelTop, CalendarClock,
   X,
 } from 'lucide-react';
 import { orderStatusService, siteSettingService } from '../services/websiteService';
@@ -23,6 +23,7 @@ import { getPermissionSet, hasAnyPermission, hasPermission } from '../utils/perm
 // ── Orders submenu ──────────────────────────────────────────
 const orderSubMenuItems = [
   { key: 'all', label: 'All Orders', icon: List, color: 'text-cyan-400' },
+  { key: 'pre_order', label: 'Pre Order', icon: CalendarClock, color: 'text-pink-400' },
   { key: 'pending', label: 'Pending', icon: Clock, color: 'text-blue-400' },
   { key: 'packaging', label: 'Packaging', icon: Box, color: 'text-purple-400' },
   { key: 'confirmed', label: 'Confirmed', icon: CheckCircle, color: 'text-teal-400' },
@@ -35,6 +36,7 @@ const orderSubMenuItems = [
 ];
 
 const ORDER_STATUS_ICONS = {
+  pre_order: CalendarClock,
   pending: Clock,
   packaging: Box,
   confirmed: CheckCircle,

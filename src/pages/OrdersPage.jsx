@@ -20,11 +20,14 @@ import {
   Copy,
   MessageCircle,
   Printer,
+  ClipboardList,
+  StickyNote,
   Truck,
 } from "lucide-react";
 import { useOrders } from "../hooks/useOrders";
 import { useAuth } from "../context/AuthContext";
 import { orderService } from "../services/orderService";
+import { productService } from "../services/productService";
 import { userService } from "../services/adminService";
 import { orderStatusService } from "../services/websiteService";
 import { ipBlockService } from "../services/websiteService";
@@ -53,15 +56,22 @@ const COURIER_COLORS = {
 const ORDER_SOURCE_OPTIONS = [
   "Website",
   "Facebook",
+  "FB Messenger",
+  "Tiktok Messenger",
+  "Tiktok",
+  "Whatsapp",
+  "Direct Call",
   "Google",
   "WooCommerce",
   "Landing Page",
   "POS",
   "Manual",
+  "Failed Order",
   "Other",
 ];
 
 const TABLE_STATUS_UPDATE_OPTIONS = [
+  "pre_order",
   "pending",
   "packaging",
   "confirmed",
@@ -169,6 +179,9 @@ export default function OrdersPage({
   const [bulkCourierBusy, setBulkCourierBusy] = useState(false);
   const [barcodePrintOrders, setBarcodePrintOrders] = useState([]);
   const [invoicePrintOrders, setInvoicePrintOrders] = useState([]);
+  const [itemListPrintOrders, setItemListPrintOrders] = useState([]);
+  const [itemListVariations, setItemListVariations] = useState({});
+  const [stickerPrintOrders, setStickerPrintOrders] = useState([]);
   const [assignees, setAssignees] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
@@ -275,6 +288,32 @@ export default function OrdersPage({
       window.removeEventListener("afterprint", handleAfterPrint);
     };
   }, [invoicePrintOrders.length]);
+
+  useEffect(() => {
+    if (!itemListPrintOrders.length) return undefined;
+
+    const handleAfterPrint = () => setItemListPrintOrders([]);
+    window.addEventListener("afterprint", handleAfterPrint);
+    const timer = window.setTimeout(() => window.print(), 100);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [itemListPrintOrders.length]);
+
+  useEffect(() => {
+    if (!stickerPrintOrders.length) return undefined;
+
+    const handleAfterPrint = () => setStickerPrintOrders([]);
+    window.addEventListener("afterprint", handleAfterPrint);
+    const timer = window.setTimeout(() => window.print(), 100);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [stickerPrintOrders.length]);
 
   function handleSearch() {
     setAppliedSearch(search);
@@ -572,6 +611,56 @@ export default function OrdersPage({
     }
 
     setInvoicePrintOrders(selectedOrders);
+  }
+
+  function handlePrintSelectedStickers() {
+    const selectedOrders = selectedOrderIds
+      .map((id) => orders.find((order) => Number(order.Id) === Number(id)))
+      .filter(Boolean);
+
+    if (!selectedOrders.length) {
+      alert("Sticker print করার জন্য আগে order select করুন");
+      return;
+    }
+
+    setStickerPrintOrders(selectedOrders);
+  }
+
+  async function handlePrintSelectedItemList() {
+    const selectedOrders = selectedOrderIds
+      .map((id) => orders.find((order) => Number(order.Id) === Number(id)))
+      .filter(Boolean);
+
+    if (!selectedOrders.length) {
+      alert("Item order list print করার জন্য আগে order select করুন");
+      return;
+    }
+
+    // Current variant stock for the "Stock Status" column, keyed by variation Id.
+    const productIds = [
+      ...new Set(
+        selectedOrders.flatMap((order) =>
+          getItemListLines(order).map((line) => line.productId).filter(Boolean),
+        ),
+      ),
+    ];
+    const products = await Promise.all(
+      productIds.map((id) =>
+        productService
+          .getById(id)
+          .then((res) => res?.data || null)
+          .catch(() => null),
+      ),
+    );
+    const variations = {};
+    products.filter(Boolean).forEach((product) => {
+      (product.variations || []).forEach((variation) => {
+        variations[variation.Id] = variation;
+      });
+    });
+
+    setItemListVariations(variations);
+    setItemListPrintOrders(selectedOrders);
   }
 
   async function handleAssignSelectedOrders() {
@@ -1047,6 +1136,22 @@ export default function OrdersPage({
               <Printer size={14} />
               Print Invoice
             </button>
+            <button
+              type="button"
+              onClick={handlePrintSelectedItemList}
+              className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-orange-600"
+            >
+              <ClipboardList size={14} />
+              Print Item Order List
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintSelectedStickers}
+              className="inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-700"
+            >
+              <StickyNote size={14} />
+              Print Sticker
+            </button>
           </div>
           {canAssignOrders && (
             <div className="border-t border-gray-100 px-4 pb-4 pt-3">
@@ -1133,6 +1238,562 @@ export default function OrdersPage({
           siteSettings={siteSettings}
         />
       )}
+
+      {itemListPrintOrders.length > 0 && (
+        <OrderItemListPrintSheet
+          orders={itemListPrintOrders}
+          variations={itemListVariations}
+          siteSettings={siteSettings}
+        />
+      )}
+
+      {stickerPrintOrders.length > 0 && (
+        <OrderStickerPrintSheet
+          orders={stickerPrintOrders}
+          siteSettings={siteSettings}
+        />
+      )}
+    </div>
+  );
+}
+
+// 75mm × 50mm parcel sticker, one per order.
+function OrderStickerPrintSheet({ orders, siteSettings }) {
+  const settings = normalizeSettingData(siteSettings);
+  const shopName = getSiteName(settings) || settings.companyName || "Khilgaon Mart";
+  const shopPhone = settings.phone || settings.phoneNumber || "";
+
+  return (
+    <div className="order-sticker-print-area">
+      <div className="order-sticker-print-toolbar">
+        <button type="button" onClick={() => window.print()}>
+          Print
+        </button>
+      </div>
+
+      {orders.map((order) => (
+        <OrderSticker
+          key={order.Id}
+          order={order}
+          shopName={shopName}
+          shopPhone={shopPhone}
+        />
+      ))}
+
+      <style>{`
+        .order-sticker-print-area {
+          display: none;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+
+        .order-sticker-print-toolbar {
+          padding: 12px;
+          text-align: center;
+        }
+
+        .order-sticker-print-toolbar button {
+          border: 1px solid #111827;
+          border-radius: 4px;
+          background: #ffffff;
+          padding: 4px 14px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .order-sticker {
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          width: 75mm;
+          height: 50mm;
+          margin: 0 auto 8px;
+          padding: 2mm 2.5mm;
+          overflow: hidden;
+          border: 1px dashed #9ca3af;
+          background: #ffffff;
+          color: #000000;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 7.5pt;
+          line-height: 1.25;
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .order-sticker:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+
+        .order-sticker p {
+          margin: 0;
+        }
+
+        .order-sticker__head {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 2mm;
+          border-bottom: 0.3mm solid #000000;
+          padding-bottom: 0.8mm;
+        }
+
+        .order-sticker__shop {
+          font-size: 9pt;
+          font-weight: 700;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .order-sticker__barcode {
+          display: flex;
+          align-items: center;
+          gap: 2mm;
+          margin-top: 1mm;
+        }
+
+        .order-sticker__barcode svg {
+          display: block;
+          width: 40mm;
+          height: 8mm;
+        }
+
+        .order-sticker__invoice {
+          font-size: 9pt;
+          font-weight: 700;
+        }
+
+        .order-sticker__to {
+          margin-top: 1mm;
+        }
+
+        .order-sticker__name {
+          font-size: 9pt;
+          font-weight: 700;
+        }
+
+        .order-sticker__clamp {
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+          overflow: hidden;
+        }
+
+        .order-sticker__items {
+          margin-top: 0.8mm;
+          font-size: 6.5pt;
+        }
+
+        .order-sticker__foot {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          margin-top: auto;
+          border-top: 0.3mm solid #000000;
+          padding-top: 0.8mm;
+        }
+
+        .order-sticker__cod {
+          font-size: 11pt;
+          font-weight: 700;
+        }
+
+        @media print {
+          @page {
+            size: 75mm 50mm;
+            margin: 0;
+          }
+
+          html,
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          body * {
+            visibility: hidden !important;
+          }
+
+          .order-sticker-print-area,
+          .order-sticker-print-area * {
+            visibility: visible !important;
+          }
+
+          .order-sticker-print-area {
+            display: block !important;
+            position: absolute;
+            inset: 0;
+            background: #ffffff;
+          }
+
+          .order-sticker-print-toolbar {
+            display: none !important;
+          }
+
+          .order-sticker {
+            margin: 0;
+            border: none;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function OrderSticker({ order, shopName, shopPhone }) {
+  const meta = getOrderNoteMeta(order);
+  const code = formatInvoiceNumber(order, "N/A");
+  const bars = buildBarcodeBars(code);
+  const barcodeWidth = bars.reduce((sum, bar) => sum + bar.width, 0);
+  const address =
+    order.customerAddress ||
+    meta.customerAddress ||
+    [order.customerArea, order.customerDistrict].filter(Boolean).join(", ");
+  const items = getInvoiceItems(order, meta)
+    .map((line) => `${line.name} [Product ID: ${line.productId ?? "N/A"}] ×${line.qty} — ৳${line.unitPrice.toLocaleString("en-US")}`)
+    .join(", ");
+  const total = Number(order.totalBill || order.total || meta.total || 0);
+  const paid = Number(order.advance || order.paid || meta.advance || meta.paid || 0);
+  const due = Math.max(0, total - paid);
+  const orderDate = order.orderDate || order.createdAt || meta.orderDate;
+
+  return (
+    <div className="order-sticker">
+      <div className="order-sticker__head">
+        <p className="order-sticker__shop">{shopName}</p>
+        {shopPhone && <p>{shopPhone}</p>}
+      </div>
+
+      <div className="order-sticker__barcode">
+        <svg
+          viewBox={`0 0 ${barcodeWidth} 60`}
+          preserveAspectRatio="none"
+          aria-label={`Barcode ${code}`}
+        >
+          <rect width={barcodeWidth} height="60" fill="#ffffff" />
+          {bars.reduce(
+            (acc, bar, index) => {
+              const x = acc.offset;
+              acc.offset += bar.width;
+              if (bar.black) {
+                acc.nodes.push(
+                  <rect key={`${x}-${index}`} x={x} y="0" width={bar.width} height="60" fill="#000000" />,
+                );
+              }
+              return acc;
+            },
+            { offset: 0, nodes: [] },
+          ).nodes}
+        </svg>
+        <p className="order-sticker__invoice">{code}</p>
+      </div>
+
+      <div className="order-sticker__to">
+        <p className="order-sticker__name">{order.customerName || "Customer"}</p>
+        <p>{order.customerPhone || ""}</p>
+        <p className="order-sticker__clamp">{address}</p>
+      </div>
+
+      <p className="order-sticker__items order-sticker__clamp">{items}</p>
+
+      <div className="order-sticker__foot">
+        <p>{orderDate ? new Date(orderDate).toLocaleDateString("en-GB") : ""}</p>
+        <p className="order-sticker__cod">COD: ৳{due.toLocaleString("en-US")}</p>
+      </div>
+    </div>
+  );
+}
+
+// Order lines for the item list: product and variant kept apart.
+function getItemListLines(order) {
+  const meta = getOrderNoteMeta(order);
+  const items = Array.isArray(meta.items) ? meta.items : [];
+  if (!items.length) {
+    return [{
+      productId: null,
+      variantId: null,
+      name: order.productName || "Product",
+      variant: "",
+      qty: Number(order.quantity || 1) || 1,
+      image: order.productImage || "",
+    }];
+  }
+  return items.map((item) => ({
+    productId: Number(item.id || item.productId) || null,
+    variantId: Number(item.variantId) || null,
+    name: item.name || item.productName || "Product",
+    variant: item.variant || "",
+    qty: Number(item.qty || item.quantity || 1) || 1,
+    image: getInvoiceItemImage(item),
+  }));
+}
+
+// Variant stock already has these orders taken out, so stock >= 0 means
+// every held order can be packed; below zero the variant is short. The
+// shortage is variant-wide, so a row never shows more short than its own qty.
+function getItemStockStatus(variation, qty) {
+  if (!variation) return "—";
+  if (variation.availability === "out of stock") return "Unavailable";
+  const stock = Number(variation.stock || 0);
+  if (stock >= 0) return "In Stock";
+  const short = Math.min(-stock, qty);
+  return variation.preOrder ? `Pre Order (${short} short)` : `Short ${short}`;
+}
+
+function ItemListImage({ src }) {
+  return (
+    <div className="order-itemlist-img">
+      {src ? (
+        <img
+          src={imageUrl(src)}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : (
+        "IMG"
+      )}
+    </div>
+  );
+}
+
+function OrderItemListPrintSheet({ orders, variations, siteSettings }) {
+  const settings = normalizeSettingData(siteSettings);
+  const shopName = getSiteName(settings) || settings.companyName || "Khilgaon Mart";
+  const shopAddress = settings.address || "Khilgaon, Dhaka";
+  const shopPhone = settings.phone || settings.phoneNumber || "";
+
+  const details = orders.flatMap((order) =>
+    getItemListLines(order).map((line) => ({ ...line, order })),
+  );
+
+  // Summary: the same product + variant across orders merged into one row.
+  const summary = [];
+  const byKey = new Map();
+  details.forEach((line) => {
+    const key = line.variantId
+      ? `v${line.variantId}`
+      : `${line.name}|${line.variant}`.toLowerCase();
+    const row = byKey.get(key);
+    if (row) {
+      row.qty += line.qty;
+      return;
+    }
+    const next = { ...line, key };
+    byKey.set(key, next);
+    summary.push(next);
+  });
+
+  return (
+    <div className="order-itemlist-print-area">
+      <div className="order-itemlist-print-toolbar">
+        <button type="button" onClick={() => window.print()}>
+          Print
+        </button>
+      </div>
+
+      <div className="order-itemlist-page">
+        <div className="order-itemlist-shop">
+          <div className="name">{shopName}</div>
+          <div>Address: {shopAddress}</div>
+          {shopPhone && <div>Phone: {shopPhone}</div>}
+        </div>
+
+        <p className="order-itemlist-caption">This table is Item Order List Summary:</p>
+        <table className="order-itemlist-table">
+          <thead>
+            <tr>
+              <th>Serial No</th>
+              <th>Image</th>
+              <th>Product Name</th>
+              <th>Product Variation Name</th>
+              <th>Qty</th>
+              <th>Stock Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.map((row, index) => (
+              <tr key={row.key}>
+                <td className="center">{index + 1}</td>
+                <td className="center"><ItemListImage src={row.image} /></td>
+                <td>{row.name}</td>
+                <td>{row.variant || "—"}</td>
+                <td className="center qty">{row.qty}</td>
+                <td className="center">{getItemStockStatus(variations[row.variantId], row.qty)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="order-itemlist-caption">This table is Item Order List Details:</p>
+        <table className="order-itemlist-table">
+          <thead>
+            <tr>
+              <th>Serial No</th>
+              <th>Customer Name</th>
+              <th>Phone Number</th>
+              <th>Image</th>
+              <th>Product Name</th>
+              <th>Product Variation Name</th>
+              <th>Qty</th>
+              <th>Stock Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {details.map((line, index) => (
+              <tr key={`${line.order.Id}-${index}`}>
+                <td className="center">{index + 1}</td>
+                <td>{line.order.customerName || "—"}</td>
+                <td>{line.order.customerPhone || "—"}</td>
+                <td className="center"><ItemListImage src={line.image} /></td>
+                <td>{line.name}</td>
+                <td>{line.variant || "—"}</td>
+                <td className="center qty">{line.qty}</td>
+                <td className="center">{getItemStockStatus(variations[line.variantId], line.qty)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="order-itemlist-thanks">Thanks for print this</p>
+      </div>
+
+      <style>{`
+        .order-itemlist-print-area {
+          display: none;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+
+        .order-itemlist-print-toolbar {
+          padding: 12px;
+          text-align: center;
+        }
+
+        .order-itemlist-print-toolbar button {
+          border: 1px solid #111827;
+          border-radius: 4px;
+          background: #ffffff;
+          padding: 4px 14px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .order-itemlist-page {
+          width: 760px;
+          margin: 0 auto;
+          background: #ffffff;
+          padding: 28px 32px;
+          color: #111827;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .order-itemlist-shop {
+          text-align: center;
+          font-size: 16px;
+          line-height: 1.4;
+        }
+
+        .order-itemlist-shop .name {
+          font-size: 18px;
+        }
+
+        .order-itemlist-caption {
+          margin: 28px 0 10px;
+          font-size: 13px;
+        }
+
+        .order-itemlist-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        .order-itemlist-table th,
+        .order-itemlist-table td {
+          border: 1px solid #111827;
+          padding: 6px 8px;
+          vertical-align: middle;
+        }
+
+        .order-itemlist-table th {
+          font-weight: 400;
+          text-align: center;
+          vertical-align: top;
+        }
+
+        .order-itemlist-table tr {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        .order-itemlist-table .center {
+          text-align: center;
+        }
+
+        .order-itemlist-table .qty {
+          font-weight: 700;
+        }
+
+        .order-itemlist-img {
+          display: inline-flex;
+          width: 36px;
+          height: 36px;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          border: 1px solid #f3f4f6;
+          background: #f9fafb;
+          color: #d1d5db;
+          font-size: 9px;
+        }
+
+        .order-itemlist-img img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .order-itemlist-thanks {
+          margin: 48px 0 0;
+          text-align: center;
+          font-size: 13px;
+        }
+
+        @media print {
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+
+          body * {
+            visibility: hidden !important;
+          }
+
+          .order-itemlist-print-area,
+          .order-itemlist-print-area * {
+            visibility: visible !important;
+          }
+
+          .order-itemlist-print-area {
+            display: block !important;
+            position: absolute;
+            inset: 0;
+            background: #ffffff;
+          }
+
+          .order-itemlist-print-toolbar {
+            display: none !important;
+          }
+
+          .order-itemlist-page {
+            width: auto;
+            padding: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1971,6 +2632,7 @@ function getInvoiceItems(order, meta) {
       const total = Number(item.total || item.lineTotal || unitPrice * qty);
       return {
         id: item.id || item.productId || index,
+        productId: item.productId || item.id || null,
         name: `${item.name || item.productName || "Product"}${item.variant ? ` (${item.variant})` : ""}`,
         qty,
         unitPrice: unitPrice || Math.round(total / qty),
@@ -1985,6 +2647,7 @@ function getInvoiceItems(order, meta) {
   return [
     {
       id: order.Id || "single",
+      productId: order.productId || meta.productId || null,
       name: order.productName || "Product",
       qty,
       unitPrice: Math.round(total / qty),

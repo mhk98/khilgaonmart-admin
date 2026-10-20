@@ -1,4 +1,5 @@
 export const DEFAULT_ORDER_STATUSES = [
+  { key: 'pre_order', label: 'Pre Order', color: '#ec4899', className: 'bg-pink-500 text-white' },
   { key: 'pending', label: 'Pending', color: '#3b82f6', className: 'bg-blue-500 text-white' },
   { key: 'packaging', label: 'Packaging', color: '#8b5cf6', className: 'bg-purple-500 text-white' },
   { key: 'confirmed', label: 'Confirmed', color: '#14b8a6', className: 'bg-teal-500 text-white' },
